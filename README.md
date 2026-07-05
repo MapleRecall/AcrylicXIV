@@ -4,6 +4,10 @@ Acrylic-style blur behind the native game UI — the world blurs while the UI it
 
 AcrylicXIV injects a blur pass into the game's render pipeline right before the HUD is drawn and uses the UI's own per-pixel coverage as a mask, so only the world *behind* semi-transparent windows and panels is blurred. The UI on top stays sharp.
 
+<img height="300" alt="image" src="https://github.com/user-attachments/assets/a6ed13f3-d66d-46f4-81ef-bc6d38dac9a1" />
+<img height="300" alt="image" src="https://github.com/user-attachments/assets/6d3186ae-aa2e-4a97-b557-0c33fb368d3c" />
+<img height="300" alt="image" src="https://github.com/user-attachments/assets/24309b37-e157-4c71-8da8-5ab20cb87860" />
+
 ## Features
 
 - **Blur only under the UI** — the world behind panels is blurred; everything drawn on top stays crisp.
@@ -15,7 +19,6 @@ AcrylicXIV injects a blur pass into the game's render pipeline right before the 
   - **Adjust** — brightness / saturation / contrast.
 - **Transparency-aware** — start / full alpha thresholds control how UI opacity fades the blur in.
 - **Skip full-screen covers** — keep maps, menus and loading screens sharp, avoiding a blur⇄sharp flash.
-- **English & 简体中文**, following your Dalamud language automatically.
 
 ## Usage
 
