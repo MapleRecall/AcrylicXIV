@@ -1,0 +1,11 @@
+## Build output
+bin/
+obj/
+
+## Rider / VS
+.idea/
+.vs/
+*.user
+
+## Dalamud packager
+*.zip

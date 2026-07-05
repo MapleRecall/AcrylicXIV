@@ -1,0 +1,25 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <Version>0.0.0.1</Version>
+    <Description>Acrylic-style blur behind the native game UI: the world blurs while the UI stays crisp.</Description>
+    <Authors>MapleRecall</Authors>
+    <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
+    <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <!-- Debug builds drop straight into the XIVLauncher dev plugins folder for auto-load. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <OutputPath>$(AppData)\XIVLauncher\devPlugins\$(MSBuildProjectName)</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- TerraFX is shipped with Dalamud but not auto-referenced; pull it from the dev lib. -->
+    <Reference Include="TerraFX.Interop.Windows">
+      <HintPath>$(DalamudLibPath)TerraFX.Interop.Windows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

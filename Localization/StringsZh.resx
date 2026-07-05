@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>AcrylicXIV</value>
+  </data>
+  <data name="CommandHelp" xml:space="preserve">
+    <value>打开 AcrylicXIV 设置；或 on / off / toggle。</value>
+  </data>
+  <data name="CmdOn" xml:space="preserve">
+    <value>AcrylicXIV：虚化已开启。</value>
+  </data>
+  <data name="CmdOff" xml:space="preserve">
+    <value>AcrylicXIV：虚化已关闭。</value>
+  </data>
+  <data name="Enabled" xml:space="preserve">
+    <value>启用</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>语言</value>
+  </data>
+  <data name="LangAuto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="TabGeneral" xml:space="preserve">
+    <value>常规</value>
+  </data>
+  <data name="TabBlurTuner" xml:space="preserve">
+    <value>虚化调节</value>
+  </data>
+  <data name="TabDebug" xml:space="preserve">
+    <value>调试</value>
+  </data>
+  <data name="SkipFullscreen" xml:space="preserve">
+    <value>全屏 UI 下禁用虚化</value>
+  </data>
+  <data name="SkipFullscreenHelp" xml:space="preserve">
+    <value>全屏遮罩（地图、菜单等）保持清晰，避免开关时闪一下。</value>
+  </data>
+  <data name="BlurStartAlpha" xml:space="preserve">
+    <value>虚化起始 alpha</value>
+  </data>
+  <data name="BlurStartAlphaHelp" xml:space="preserve">
+    <value>UI 要多不透明才开始出现虚化。</value>
+  </data>
+  <data name="FullBlurAlpha" xml:space="preserve">
+    <value>完全虚化 alpha</value>
+  </data>
+  <data name="FullBlurAlphaHelp" xml:space="preserve">
+    <value>UI 要多不透明才达到完全虚化。</value>
+  </data>
+  <data name="InterWindowNote" xml:space="preserve">
+    <value>说明：虚化只出现在 UI 下方，不能在相互重叠的窗口之间叠加。</value>
+  </data>
+  <data name="Blur" xml:space="preserve">
+    <value>虚化</value>
+  </data>
+  <data name="BlurHelp" xml:space="preserve">
+    <value>UI 背后的虚化。关掉则只保留材质效果。</value>
+  </data>
+  <data name="AlgoKawase" xml:space="preserve">
+    <value>Kawase</value>
+  </data>
+  <data name="AlgoGaussian" xml:space="preserve">
+    <value>高斯</value>
+  </data>
+  <data name="AlgoHelp" xml:space="preserve">
+    <value>Kawase：更省，但移动时可能有轻微抖动。
+高斯：更稳，尤其是文字。</value>
+  </data>
+  <data name="Downsample" xml:space="preserve">
+    <value>降采样</value>
+  </data>
+  <data name="DownsampleHelp" xml:space="preserve">
+    <value>越低越柔和、也越省。</value>
+  </data>
+  <data name="DownsampleFull" xml:space="preserve">
+    <value>全分辨率</value>
+  </data>
+  <data name="BlurStrength" xml:space="preserve">
+    <value>虚化强度</value>
+  </data>
+  <data name="EffectAmount" xml:space="preserve">
+    <value>强度</value>
+  </data>
+  <data name="Grain" xml:space="preserve">
+    <value>颗粒</value>
+  </data>
+  <data name="GrainHelp" xml:space="preserve">
+    <value>叠加细密噪点，营造亚克力质感。</value>
+  </data>
+  <data name="GrainSize" xml:space="preserve">
+    <value>颗粒大小</value>
+  </data>
+  <data name="GrainSoft" xml:space="preserve">
+    <value>柔和颗粒（磨砂）</value>
+  </data>
+  <data name="GrainSoftHelp" xml:space="preserve">
+    <value>开 = 柔和颗粒；关 = 锐利颗粒。</value>
+  </data>
+  <data name="Tint" xml:space="preserve">
+    <value>染色</value>
+  </data>
+  <data name="TintHelp" xml:space="preserve">
+    <value>把虚化背景染成某个颜色，类似 sepia 滤镜（保留细节）。</value>
+  </data>
+  <data name="TintColour" xml:space="preserve">
+    <value>染色颜色</value>
+  </data>
+  <data name="Distortion" xml:space="preserve">
+    <value>扭曲</value>
+  </data>
+  <data name="DistortionHelp" xml:space="preserve">
+    <value>像不平整的玻璃一样扭曲虚化背景。</value>
+  </data>
+  <data name="DistortionScale" xml:space="preserve">
+    <value>扭曲尺度</value>
+  </data>
+  <data name="DistortionScaleHelp" xml:space="preserve">
+    <value>波纹大小——越大越宽、越平滑。</value>
+  </data>
+  <data name="Adjust" xml:space="preserve">
+    <value>背景调整</value>
+  </data>
+  <data name="AdjustHelp" xml:space="preserve">
+    <value>调整虚化背景的亮度、饱和度和对比度。</value>
+  </data>
+  <data name="Brightness" xml:space="preserve">
+    <value>亮度</value>
+  </data>
+  <data name="Saturation" xml:space="preserve">
+    <value>饱和度</value>
+  </data>
+  <data name="Contrast" xml:space="preserve">
+    <value>对比度</value>
+  </data>
+  <data name="FullscreenTest" xml:space="preserve">
+    <value>全屏测试</value>
+  </data>
+  <data name="FullscreenTestHelp" xml:space="preserve">
+    <value>在整个屏幕预览效果，忽略 UI。</value>
+  </data>
+  <data name="DebugClear" xml:space="preserve">
+    <value>用纯色填充代替虚化</value>
+  </data>
+  <data name="DebugClearHelp" xml:space="preserve">
+    <value>用纯色填满屏幕代替虚化（诊断用）。</value>
+  </data>
+  <data name="DebugMask" xml:space="preserve">
+    <value>显示 UI 覆盖遮罩</value>
+  </data>
+  <data name="DebugMaskHelp" xml:space="preserve">
+    <value>显示游戏认为 UI 所在的位置（白 = UI）。</value>
+  </data>
+</root>

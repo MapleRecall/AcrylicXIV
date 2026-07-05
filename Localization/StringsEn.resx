@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="WindowTitle" xml:space="preserve">
+    <value>AcrylicXIV</value>
+  </data>
+  <data name="CommandHelp" xml:space="preserve">
+    <value>Open AcrylicXIV settings; or on / off / toggle.</value>
+  </data>
+  <data name="CmdOn" xml:space="preserve">
+    <value>AcrylicXIV: blur enabled.</value>
+  </data>
+  <data name="CmdOff" xml:space="preserve">
+    <value>AcrylicXIV: blur disabled.</value>
+  </data>
+  <data name="Enabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="LangAuto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="TabGeneral" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="TabBlurTuner" xml:space="preserve">
+    <value>Blur tuner</value>
+  </data>
+  <data name="TabDebug" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="SkipFullscreen" xml:space="preserve">
+    <value>Disable blur under full-screen UI</value>
+  </data>
+  <data name="SkipFullscreenHelp" xml:space="preserve">
+    <value>Keep full-screen covers (maps, menus) sharp, avoiding a flash when they open or close.</value>
+  </data>
+  <data name="BlurStartAlpha" xml:space="preserve">
+    <value>Blur start alpha</value>
+  </data>
+  <data name="BlurStartAlphaHelp" xml:space="preserve">
+    <value>How opaque the UI must be before the blur starts fading in.</value>
+  </data>
+  <data name="FullBlurAlpha" xml:space="preserve">
+    <value>Full blur alpha</value>
+  </data>
+  <data name="FullBlurAlphaHelp" xml:space="preserve">
+    <value>How opaque the UI must be for the blur to reach full.</value>
+  </data>
+  <data name="InterWindowNote" xml:space="preserve">
+    <value>Note: the blur only shows beneath the UI, not between overlapping windows.</value>
+  </data>
+  <data name="Blur" xml:space="preserve">
+    <value>Blur</value>
+  </data>
+  <data name="BlurHelp" xml:space="preserve">
+    <value>The blur behind the UI. Turn off to keep only the material effects.</value>
+  </data>
+  <data name="AlgoKawase" xml:space="preserve">
+    <value>Kawase</value>
+  </data>
+  <data name="AlgoGaussian" xml:space="preserve">
+    <value>Gaussian</value>
+  </data>
+  <data name="AlgoHelp" xml:space="preserve">
+    <value>Kawase: cheaper, but can shimmer a little when moving.
+Gaussian: steadier, especially on text.</value>
+  </data>
+  <data name="Downsample" xml:space="preserve">
+    <value>Downsample</value>
+  </data>
+  <data name="DownsampleHelp" xml:space="preserve">
+    <value>Lower = softer and much cheaper.</value>
+  </data>
+  <data name="DownsampleFull" xml:space="preserve">
+    <value>Full res</value>
+  </data>
+  <data name="BlurStrength" xml:space="preserve">
+    <value>Blur strength</value>
+  </data>
+  <data name="EffectAmount" xml:space="preserve">
+    <value>Amount</value>
+  </data>
+  <data name="Grain" xml:space="preserve">
+    <value>Grain</value>
+  </data>
+  <data name="GrainHelp" xml:space="preserve">
+    <value>Adds fine noise grain for an acrylic look.</value>
+  </data>
+  <data name="GrainSize" xml:space="preserve">
+    <value>Grain size</value>
+  </data>
+  <data name="GrainSoft" xml:space="preserve">
+    <value>Soft grain (frost)</value>
+  </data>
+  <data name="GrainSoftHelp" xml:space="preserve">
+    <value>On = soft grain; off = sharp grain.</value>
+  </data>
+  <data name="Tint" xml:space="preserve">
+    <value>Tint</value>
+  </data>
+  <data name="TintHelp" xml:space="preserve">
+    <value>Tints the blurred background toward a colour, like a sepia filter (keeps detail).</value>
+  </data>
+  <data name="TintColour" xml:space="preserve">
+    <value>Tint colour</value>
+  </data>
+  <data name="Distortion" xml:space="preserve">
+    <value>Distortion</value>
+  </data>
+  <data name="DistortionHelp" xml:space="preserve">
+    <value>Warps the blurred background like uneven glass.</value>
+  </data>
+  <data name="DistortionScale" xml:space="preserve">
+    <value>Distortion scale</value>
+  </data>
+  <data name="DistortionScaleHelp" xml:space="preserve">
+    <value>Ripple size — larger = broader and smoother.</value>
+  </data>
+  <data name="Adjust" xml:space="preserve">
+    <value>Background adjust</value>
+  </data>
+  <data name="AdjustHelp" xml:space="preserve">
+    <value>Brightness, saturation and contrast of the blurred background.</value>
+  </data>
+  <data name="Brightness" xml:space="preserve">
+    <value>Brightness</value>
+  </data>
+  <data name="Saturation" xml:space="preserve">
+    <value>Saturation</value>
+  </data>
+  <data name="Contrast" xml:space="preserve">
+    <value>Contrast</value>
+  </data>
+  <data name="FullscreenTest" xml:space="preserve">
+    <value>Full-screen test</value>
+  </data>
+  <data name="FullscreenTestHelp" xml:space="preserve">
+    <value>Previews the effect across the whole screen, ignoring the UI.</value>
+  </data>
+  <data name="DebugClear" xml:space="preserve">
+    <value>Solid fill instead of blur</value>
+  </data>
+  <data name="DebugClearHelp" xml:space="preserve">
+    <value>Fills the screen with a flat colour instead of blurring (diagnostic).</value>
+  </data>
+  <data name="DebugMask" xml:space="preserve">
+    <value>Show UI coverage mask</value>
+  </data>
+  <data name="DebugMaskHelp" xml:space="preserve">
+    <value>Shows where the game thinks the UI is (white = UI).</value>
+  </data>
+</root>
