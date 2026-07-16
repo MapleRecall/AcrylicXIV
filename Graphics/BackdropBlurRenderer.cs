@@ -1021,7 +1021,10 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
                 throw new InvalidOperationException($"D3DCompile failed (0x{(uint)hr.Value:X8}): {message}");
             }
 
-            return new ComPtr<ID3DBlob>(code);
+            // Transfer ownership without changing the COM reference count.
+            var result = default(ComPtr<ID3DBlob>);
+            result.Attach(code.Detach());
+            return result;
         }
         finally
         {

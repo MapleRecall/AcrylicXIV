@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 using Dalamud.Game;
 using Dalamud.Game.Command;
@@ -13,36 +15,40 @@ using AcrylicXIV.Windows;
 
 namespace AcrylicXIV;
 
-public sealed class Plugin : IDalamudPlugin
+public sealed class Plugin : IAsyncDalamudPlugin
 {
+    private const int MarkerDrainFrames = 3;
+
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IGameInteropProvider GameInterop { get; private set; } = null!;
     [PluginService] internal static ISigScanner SigScanner { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
+    [PluginService] internal static IFramework Framework { get; private set; } = null!;
 
     private const string CommandName = "/acrylic";
 
     private readonly BackdropBlurRenderer renderer = new();
-    private readonly RenderPipelineInjector injector;
-    private readonly RenderHooks renderHooks;
+    private RenderPipelineInjector? injector;
+    private RenderHooks? renderHooks;
 
-    public Configuration Configuration { get; init; }
+    public Configuration Configuration { get; private set; } = null!;
 
     public readonly WindowSystem WindowSystem = new("AcrylicXIV");
-    private ConfigWindow ConfigWindow { get; init; }
+    private ConfigWindow? configWindow;
 
-    public Plugin()
+    public Task LoadAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
         // Resolve the UI language before anything reads a localized string (Auto follows Dalamud's own setting).
         Loc.Apply(Configuration.Language);
         PluginInterface.LanguageChanged += OnDalamudLanguageChanged;
 
-        ConfigWindow = new ConfigWindow(this);
-        WindowSystem.AddWindow(ConfigWindow);
+        configWindow = new ConfigWindow(this);
+        WindowSystem.AddWindow(configWindow);
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
@@ -63,22 +69,39 @@ public sealed class Plugin : IDalamudPlugin
             Log.Warning("Render-thread hook live but pushback/injector signatures did not fully resolve; blur may be inactive on this client.");
         else
             Log.Warning("Render-thread signature not found on this client; blur will be inactive.");
+
+        return Task.CompletedTask;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         PluginInterface.LanguageChanged -= OnDalamudLanguageChanged;
-        renderHooks.Dispose();
-        injector.Dispose();
-        renderer.Dispose();
-
         PluginInterface.UiBuilder.Draw -= WindowSystem.Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= ToggleConfigUi;
         PluginInterface.UiBuilder.OpenMainUi -= ToggleConfigUi;
-        WindowSystem.RemoveAllWindows();
-        ConfigWindow.Dispose();
-
         CommandManager.RemoveHandler(CommandName);
+
+        if (renderHooks != null)
+        {
+            renderHooks.BeginDispose();
+            if (renderHooks.Available && !Framework.IsFrameworkUnloading)
+            {
+                try
+                {
+                    await Framework.RunOnTick(static () => { }, delayTicks: MarkerDrainFrames).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (Framework.IsFrameworkUnloading)
+                {
+                    // Expected during framework shutdown.
+                }
+            }
+            renderHooks.Dispose();
+        }
+        injector?.Dispose();
+        renderer.Dispose();
+
+        WindowSystem.RemoveAllWindows();
+        configWindow?.Dispose();
     }
 
     // "/acrylic" opens settings; "/acrylic on|off|toggle" flips the master switch without opening the window.
@@ -115,5 +138,5 @@ public sealed class Plugin : IDalamudPlugin
             Loc.Apply(PluginLanguage.Auto);
     }
 
-    public void ToggleConfigUi() => ConfigWindow.Toggle();
+    public void ToggleConfigUi() => configWindow?.Toggle();
 }

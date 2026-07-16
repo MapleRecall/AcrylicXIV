@@ -2,6 +2,9 @@ using System;
 using System.Numerics;
 
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface.Components;
+using Dalamud.Interface.Utility;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 
 using AcrylicXIV.Localization;
@@ -36,24 +39,24 @@ public sealed class ConfigWindow : Window, IDisposable
             config.Save();
         }
 
-        if (ImGui.BeginTabBar("acrylic-tabs"))
+        using var tabBar = ImRaii.TabBar("acrylic-tabs");
+        if (tabBar)
         {
-            if (ImGui.BeginTabItem(Loc.Get("TabGeneral") + "###general"))
+            using (var tab = ImRaii.TabItem(Loc.Get("TabGeneral") + "###general"))
             {
-                DrawGeneralTab();
-                ImGui.EndTabItem();
+                if (tab)
+                    DrawGeneralTab();
             }
-            if (ImGui.BeginTabItem(Loc.Get("TabBlurTuner") + "###tuner"))
+            using (var tab = ImRaii.TabItem(Loc.Get("TabBlurTuner") + "###tuner"))
             {
-                DrawBlurTunerTab();
-                ImGui.EndTabItem();
+                if (tab)
+                    DrawBlurTunerTab();
             }
-            if (ImGui.BeginTabItem(Loc.Get("TabDebug") + "###debug"))
+            using (var tab = ImRaii.TabItem(Loc.Get("TabDebug") + "###debug"))
             {
-                DrawDebugTab();
-                ImGui.EndTabItem();
+                if (tab)
+                    DrawDebugTab();
             }
-            ImGui.EndTabBar();
         }
     }
 
@@ -63,7 +66,7 @@ public sealed class ConfigWindow : Window, IDisposable
         ImGui.Spacing();
 
         var langIdx = (int)config.Language;
-        ImGui.SetNextItemWidth(160f);
+        ImGui.SetNextItemWidth(160f * ImGuiHelpers.GlobalScale);
         if (ImGui.Combo(Loc.Get("Language") + "###language", ref langIdx, Loc.Get("LangAuto") + "\0English\0中文\0"))
         {
             config.Language = (PluginLanguage)Math.Clamp(langIdx, 0, 2);
@@ -79,8 +82,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.SkipFullscreenUi = skipFs;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("SkipFullscreenHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("SkipFullscreenHelp"));
 
         var start = config.MaskAlphaStart;
         if (ImGui.SliderFloat(Loc.Get("BlurStartAlpha"), ref start, 0.0f, 1.0f, "%.2f"))
@@ -91,8 +93,7 @@ public sealed class ConfigWindow : Window, IDisposable
                 config.MaskAlphaEnd = start;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("BlurStartAlphaHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("BlurStartAlphaHelp"));
 
         var end = config.MaskAlphaEnd;
         if (ImGui.SliderFloat(Loc.Get("FullBlurAlpha"), ref end, 0.0f, 1.0f, "%.2f"))
@@ -103,14 +104,12 @@ public sealed class ConfigWindow : Window, IDisposable
                 config.MaskAlphaStart = end;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("FullBlurAlphaHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("FullBlurAlphaHelp"));
 
         ImGui.Spacing();
         ImGui.Separator();
-        ImGui.PushTextWrapPos(0.0f);
+        using var wrap = ImRaii.TextWrapPos(0.0f);
         ImGui.TextUnformatted(Loc.Get("InterWindowNote"));
-        ImGui.PopTextWrapPos();
     }
 
     // The blur algorithm and its tuning, plus the frosted-glass material layered on top.
@@ -125,8 +124,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.BlurEnabled = blurEnabled;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("BlurHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("BlurHelp"));
 
         if (config.BlurEnabled)
         {
@@ -144,8 +142,7 @@ public sealed class ConfigWindow : Window, IDisposable
                 config.BlurAlgorithm = BlurAlgorithm.Gaussian;
                 config.Save();
             }
-            ImGui.SameLine();
-            HelpMarker(Loc.Get("AlgoHelp"));
+            ImGuiComponents.HelpMarker(Loc.Get("AlgoHelp"));
 
             if (config.BlurAlgorithm == BlurAlgorithm.Gaussian)
             {
@@ -155,8 +152,7 @@ public sealed class ConfigWindow : Window, IDisposable
                     config.DownsampleLevels = Math.Clamp(downsample, 0, 5);
                     config.Save();
                 }
-                ImGui.SameLine();
-                HelpMarker(Loc.Get("DownsampleHelp"));
+                ImGuiComponents.HelpMarker(Loc.Get("DownsampleHelp"));
 
                 var gStrength = config.GaussianStrength;
                 if (ImGui.SliderFloat(Loc.Get("BlurStrength"), ref gStrength, 0.0f, 8.0f, "%.1f"))
@@ -187,8 +183,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.GrainEnabled = grainEnabled;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("GrainHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("GrainHelp"));
 
         if (config.GrainEnabled)
         {
@@ -214,8 +209,7 @@ public sealed class ConfigWindow : Window, IDisposable
                 config.GrainSoft = grainSoft;
                 config.Save();
             }
-            ImGui.SameLine();
-            HelpMarker(Loc.Get("GrainSoftHelp"));
+            ImGuiComponents.HelpMarker(Loc.Get("GrainSoftHelp"));
 
             ImGui.Unindent();
         }
@@ -229,8 +223,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.DistortEnabled = DistortEnabled;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("DistortionHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("DistortionHelp"));
 
         if (config.DistortEnabled)
         {
@@ -249,8 +242,7 @@ public sealed class ConfigWindow : Window, IDisposable
                 config.DistortScale = DistortScale;
                 config.Save();
             }
-            ImGui.SameLine();
-            HelpMarker(Loc.Get("DistortionScaleHelp"));
+            ImGuiComponents.HelpMarker(Loc.Get("DistortionScaleHelp"));
 
             ImGui.Unindent();
         }
@@ -264,8 +256,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.TintEnabled = tintEnabled;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("TintHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("TintHelp"));
 
         if (config.TintEnabled)
         {
@@ -297,8 +288,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.AdjustEnabled = adjustEnabled;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("AdjustHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("AdjustHelp"));
 
         if (config.AdjustEnabled)
         {
@@ -340,8 +330,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.FullscreenTest = fullscreen;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("FullscreenTestHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("FullscreenTestHelp"));
 
         if (config.FullscreenTest)
         {
@@ -353,8 +342,7 @@ public sealed class ConfigWindow : Window, IDisposable
                 config.DebugClear = debugClear;
                 config.Save();
             }
-            ImGui.SameLine();
-            HelpMarker(Loc.Get("DebugClearHelp"));
+            ImGuiComponents.HelpMarker(Loc.Get("DebugClearHelp"));
 
             ImGui.Unindent();
         }
@@ -365,8 +353,7 @@ public sealed class ConfigWindow : Window, IDisposable
             config.DebugShowUiMask = showMask;
             config.Save();
         }
-        ImGui.SameLine();
-        HelpMarker(Loc.Get("DebugMaskHelp"));
+        ImGuiComponents.HelpMarker(Loc.Get("DebugMaskHelp"));
     }
 
     private static string DownsampleLabel(int levels) => levels switch
@@ -379,16 +366,4 @@ public sealed class ConfigWindow : Window, IDisposable
         _ => "1/32",
     };
 
-    private static void HelpMarker(string text)
-    {
-        ImGui.TextDisabled("(?)");
-        if (ImGui.IsItemHovered())
-        {
-            ImGui.BeginTooltip();
-            ImGui.PushTextWrapPos(ImGui.GetFontSize() * 32.0f);
-            ImGui.TextUnformatted(text);
-            ImGui.PopTextWrapPos();
-            ImGui.EndTooltip();
-        }
-    }
 }

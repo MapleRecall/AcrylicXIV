@@ -248,8 +248,14 @@ internal sealed unsafe class RenderHooks : IDisposable
         }
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Stops marker production without disabling the consumer; call <see cref="Dispose"/> after queued markers drain.
+    /// </summary>
+    public void BeginDispose()
     {
+        if (disposed)
+            return;
+
         // Ordered teardown to avoid crashing the game's render thread:
         // 1. Stop PRODUCING markers (main-thread hooks) and stop doing GPU work — but keep the render-thread
         //    SetRenderTarget hook ENABLED so it still STRIPS any sentinel markers already sitting in the render
@@ -263,12 +269,11 @@ internal sealed unsafe class RenderHooks : IDisposable
         {
             disposed = true; // no more blur, and drains any in-flight blur that holds this lock
         }
+    }
 
-        // 2. Give the render thread a few frames to replay (and strip) any markers already queued this frame.
-        if (setRenderTargetHook != null)
-            System.Threading.Thread.Sleep(150);
-
-        // 3. The queue is drained now; stop consuming and dispose the hooks.
+    public void Dispose()
+    {
+        BeginDispose();
         setRenderTargetHook?.Disable();
         draw2DHook?.Dispose();
         pushbackUiHook?.Dispose();

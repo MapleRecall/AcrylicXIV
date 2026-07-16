@@ -1,6 +1,6 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.0.0.1</Version>
+    <Version>0.0.0.2</Version>
     <Description>Acrylic-style blur behind the native game UI: the world blurs while the UI stays crisp.</Description>
     <Authors>MapleRecall</Authors>
     <PackageLicenseExpression>AGPL-3.0-or-later</PackageLicenseExpression>
