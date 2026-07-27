@@ -2,7 +2,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Dalamud.Game;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
@@ -23,7 +22,6 @@ public sealed class Plugin : IAsyncDalamudPlugin
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IGameInteropProvider GameInterop { get; private set; } = null!;
-    [PluginService] internal static ISigScanner SigScanner { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
 
@@ -60,15 +58,15 @@ public sealed class Plugin : IAsyncDalamudPlugin
         PluginInterface.UiBuilder.OpenMainUi += ToggleConfigUi;
 
         // All D3D work happens on the game render thread inside RenderHooks — never from the main thread.
-        injector = new RenderPipelineInjector(SigScanner, GameInterop);
+        injector = new RenderPipelineInjector();
         renderHooks = new RenderHooks(renderer, () => Configuration, injector, GameInterop);
 
         if (renderHooks.DeterministicReady)
             Log.Information("Deterministic pre-UI blur live. Blur is {State}.", Configuration.Enabled ? "ENABLED" : "disabled (opt in via /acrylic)");
         else if (renderHooks.Available)
-            Log.Warning("Render-thread hook live but pushback/injector signatures did not fully resolve; blur may be inactive on this client.");
+            Log.Warning("Render-thread hook live but the FFXIVClientStructs UI hooks or render context helpers are unavailable; blur may be inactive on this client.");
         else
-            Log.Warning("Render-thread signature not found on this client; blur will be inactive.");
+            Log.Warning("FFXIVClientStructs render-thread hook unavailable on this client; blur will be inactive.");
 
         return Task.CompletedTask;
     }
