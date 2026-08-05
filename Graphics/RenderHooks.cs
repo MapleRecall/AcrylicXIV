@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 
 using Dalamud.Hooking;
 using Dalamud.Plugin.Services;
@@ -119,12 +120,26 @@ internal sealed unsafe class RenderHooks : IDisposable
             var n = command->RenderTargetCount;
             if (n == RenderPipelineInjector.BlurMarker)
             {
-                HandlePreUiMarker();
+                try
+                {
+                    HandlePreUiMarker();
+                }
+                finally
+                {
+                    injector.MarkerConsumed();
+                }
                 return;
             }
             if (n == RenderPipelineInjector.PostUiMarker)
             {
-                HandlePostUiMarker();
+                try
+                {
+                    HandlePostUiMarker();
+                }
+                finally
+                {
+                    injector.MarkerConsumed();
+                }
                 return;
             }
         }
@@ -212,10 +227,10 @@ internal sealed unsafe class RenderHooks : IDisposable
     /// <summary>
     /// Stops marker production without disabling the consumer; call <see cref="Dispose"/> after queued markers drain.
     /// </summary>
-    public void BeginDispose()
+    public Task BeginDispose()
     {
         if (disposed)
-            return;
+            return injector.BeginDrain();
 
         // Stop producers first, but keep the consumer enabled until queued markers drain. Otherwise a sentinel
         // RenderTargetCount can reach the game handler and crash the render thread.
@@ -225,11 +240,15 @@ internal sealed unsafe class RenderHooks : IDisposable
         {
             disposed = true;
         }
+        return injector.BeginDrain();
     }
 
     public void Dispose()
     {
-        BeginDispose();
+        var drainTask = BeginDispose();
+        if (!drainTask.IsCompletedSuccessfully)
+            throw new InvalidOperationException("Queued render markers must drain before disposing the consumer hook.");
+
         setRenderTargetHook?.Disable();
         draw2DHook?.Dispose();
         pushbackUiHook?.Dispose();

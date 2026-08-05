@@ -16,14 +16,11 @@ namespace AcrylicXIV;
 
 public sealed class Plugin : IAsyncDalamudPlugin
 {
-    private const int MarkerDrainFrames = 3;
-
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IGameInteropProvider GameInterop { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
-    [PluginService] internal static IFramework Framework { get; private set; } = null!;
 
     private const string CommandName = "/acrylic";
 
@@ -81,18 +78,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
         if (renderHooks != null)
         {
-            renderHooks.BeginDispose();
-            if (renderHooks.Available && !Framework.IsFrameworkUnloading)
-            {
-                try
-                {
-                    await Framework.RunOnTick(static () => { }, delayTicks: MarkerDrainFrames).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (Framework.IsFrameworkUnloading)
-                {
-                    // Expected during framework shutdown.
-                }
-            }
+            await renderHooks.BeginDispose().ConfigureAwait(false);
             renderHooks.Dispose();
         }
         injector?.Dispose();
