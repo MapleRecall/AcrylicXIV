@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
@@ -15,6 +16,7 @@ internal sealed unsafe class RenderPipelineInjector : IDisposable
     internal const int PostUiMarker = 0x1B71;
 
     private readonly object markerLock = new();
+    private readonly Queue<PreUiFrameState> preUiFrameStates = new(8);
     private TaskCompletionSource<bool>? drainCompletion;
     private int pendingMarkers;
     private bool acceptingMarkers = true;
@@ -29,7 +31,16 @@ internal sealed unsafe class RenderPipelineInjector : IDisposable
     /// <summary>
     /// Must run on the command-recording thread so the marker uses that thread's graphics context.
     /// </summary>
-    public void QueueMarker(int sentinel)
+    public void QueueMarker(int sentinel) => QueueMarkerCore(sentinel, null);
+
+    /// <summary>
+    /// Queue a pre-UI marker together with its matching frame state. Both sides use <c>markerLock</c>, so
+    /// the render thread cannot consume the native command before its state has been enqueued.
+    /// </summary>
+    public void QueuePreUiMarker(PreUiFrameState frameState)
+        => QueueMarkerCore(BlurMarker, frameState);
+
+    private void QueueMarkerCore(int sentinel, PreUiFrameState? preUiFrameState)
     {
         lock (markerLock)
         {
@@ -52,17 +63,24 @@ internal sealed unsafe class RenderPipelineInjector : IDisposable
             command->Type = RenderCommandType.SetTarget;
             command->RenderTargetCount = sentinel;
 
+            // Ensure any managed allocation happens before the irreversible native queue operation. The render
+            // thread blocks on markerLock until both the pending count and matching frame state are visible.
+            if (preUiFrameState.HasValue)
+                preUiFrameStates.EnsureCapacity(preUiFrameStates.Count + 1);
+
+            context->PushBackCommand(command);
             pendingMarkers++;
-            try
-            {
-                context->PushBackCommand(command);
-            }
-            catch
-            {
-                pendingMarkers--;
-                throw;
-            }
+            if (preUiFrameState.HasValue)
+                preUiFrameStates.Enqueue(preUiFrameState.Value);
         }
+    }
+
+    public PreUiFrameState TakePreUiFrameState()
+    {
+        lock (markerLock)
+            return preUiFrameStates.Count > 0
+                ? preUiFrameStates.Dequeue()
+                : PreUiFrameState.Create(skipEffect: false, effectOpacity: 1f);
     }
 
     public Task BeginDrain()
@@ -101,6 +119,7 @@ internal sealed unsafe class RenderPipelineInjector : IDisposable
         {
             acceptingMarkers = false;
             disposed = true;
+            preUiFrameStates.Clear();
         }
     }
 }

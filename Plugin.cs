@@ -20,6 +20,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IGameInteropProvider GameInterop { get; private set; } = null!;
+    [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
     [PluginService] internal static IChatGui ChatGui { get; private set; } = null!;
 
     private const string CommandName = "/acrylic";
@@ -56,7 +57,7 @@ public sealed class Plugin : IAsyncDalamudPlugin
 
         // All D3D work happens on the game render thread inside RenderHooks — never from the main thread.
         injector = new RenderPipelineInjector();
-        renderHooks = new RenderHooks(renderer, () => Configuration, injector, GameInterop);
+        renderHooks = new RenderHooks(renderer, () => Configuration, injector, GameInterop, GameGui);
 
         if (renderHooks.DeterministicReady)
             Log.Information("Deterministic pre-UI blur live. Blur is {State}.", Configuration.Enabled ? "ENABLED" : "disabled (opt in via /acrylic)");

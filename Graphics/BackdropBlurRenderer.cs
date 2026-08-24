@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -56,10 +58,22 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
     private uint blurHeight;
     private DXGI_FORMAT blurFormat;
 
+    // Half-resolution R8 mask generated from the current frame's visible nameplate bounds. It is cleared and
+    // filled with a few nested ClearView rectangles for a soft edge, then sampled once by the final compose pass.
+    private ComPtr<ID3D11Texture2D> exclusionMaskTexture;
+    private ComPtr<ID3D11RenderTargetView> exclusionMaskRtv;
+    private ComPtr<ID3D11ShaderResourceView> exclusionMaskSrv;
+    private ComPtr<ID3D11DeviceContext1> deviceContext1;
+    private uint exclusionMaskWidth;
+    private uint exclusionMaskHeight;
+    private bool deviceContext1Unavailable;
+    private bool underUiExclusionValid;
+
     // Validity of the pre-UI capture for this frame, and the resource it was taken from. Compose must only run
     // when a matching pre-UI capture exists for the same bound back buffer (else it would ghost a stale frame).
     private bool underUiCaptureValid;
     private nint underUiCaptureResource;
+    private float underUiEffectOpacity = 1f;
 
     // Blur pyramid: progressively halved render targets (1/2, 1/4, 1/8, 1/16, 1/32) used by the low-res Gaussian
     // and Kawase algorithms, plus a separable-blur temp at the working (1/4) resolution. All are render-target +
@@ -80,6 +94,18 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
     private uint gaussTempH;
 
     private ComPtr<ID3D11PixelShader> pixelShaderComposeUnderUi;
+    private ComPtr<ID3D11PixelShader> pixelShaderFullscreenState;
+
+    // Ping-ponged 1x1 GPU state. Full-screen UI writes recovery progress 0; after it closes the value returns
+    // to 1 over the configured duration. This avoids CPU readback and evaluates the 12x12 grid only once/frame.
+    private readonly ComPtr<ID3D11Texture2D>[] fullscreenStateTextures = new ComPtr<ID3D11Texture2D>[2];
+    private readonly ComPtr<ID3D11RenderTargetView>[] fullscreenStateRtvs = new ComPtr<ID3D11RenderTargetView>[2];
+    private readonly ComPtr<ID3D11ShaderResourceView>[] fullscreenStateSrvs = new ComPtr<ID3D11ShaderResourceView>[2];
+    private readonly uint[] fullscreenStateWidths = new uint[2];
+    private readonly uint[] fullscreenStateHeights = new uint[2];
+    private int fullscreenStateReadIndex;
+    private bool fullscreenStateWasEnabled;
+    private long fullscreenStateTimestamp;
 
     private bool pipelineReady;
     private bool pipelineFailed;
@@ -112,12 +138,19 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         public float Brightness;
         public float Saturation;
         public float Contrast;
-        public float Pad0;
+        public float UseExclusionMask;
+        public float EffectOpacity;
+        public float Padding1;
+        public float Padding2;
+        public float Padding3;
     }
 
-    /// <summary>Copy the bound target's RGB back unchanged while forcing its alpha channel to 0 (mask baseline).</summary>
-    public nint ClearBoundAlpha()
-        => RunSampledPass(PassKind.ClearAlpha);
+    /// <summary>
+    /// Copy the bound target's RGB back unchanged while forcing its alpha channel to 0 (mask baseline), and prepare
+    /// the optional exclusion mask so the diagnostic pass can display it after the native UI draws.
+    /// </summary>
+    public nint ClearBoundAlpha(ReadOnlySpan<Vector4> exclusionRectangles = default)
+        => RunSampledPass(PassKind.ClearAlpha, exclusionRectangles);
 
     /// <summary>Overwrite the bound target with its own alpha channel as greyscale (UI-coverage diagnostic).</summary>
     public nint VisualizeBoundAlpha()
@@ -155,7 +188,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
     /// The shader/blend are chosen AFTER the pipeline is initialized (so the first-ever call can't bind a null
     /// shader). Backs the two mask-diagnostic passes (alpha-clear and coverage preview).
     /// </summary>
-    private nint RunSampledPass(PassKind kind)
+    private nint RunSampledPass(PassKind kind, ReadOnlySpan<Vector4> exclusionRectangles = default)
     {
         var deviceStruct = Device.Instance();
         if (deviceStruct == null)
@@ -196,11 +229,22 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             if (!EnsureScratch(device, tex2d))
                 return 0;
 
+            if (kind == PassKind.ClearAlpha)
+            {
+                underUiExclusionValid = false;
+                RenderExclusionMask(device, context, scratchWidth, scratchHeight, exclusionRectangles);
+            }
+
+            var useExclusionMask = kind == PassKind.AlphaViz && underUiExclusionValid;
+            if (kind == PassKind.AlphaViz)
+                underUiExclusionValid = false;
+
             // Snapshot the target, then run the pass sampling that snapshot back onto the live target.
             context->CopyResource((ID3D11Resource*)scratchTexture.Get(), res);
             var c = PassConstants(scratchWidth, scratchHeight, 1f);
+            c.UseExclusionMask = useExclusionMask ? 1f : 0f;
             CaptureAndRender(context, rtv, scratchWidth, scratchHeight, ps, blend,
-                scratchSrv.Get(), null, null, c);
+                scratchSrv.Get(), c, srv3: useExclusionMask ? exclusionMaskSrv.Get() : null);
 
             return (nint)res;
         }
@@ -217,9 +261,12 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
     /// its alpha channel so the native UI drawn next accumulates per-pixel coverage into alpha (which
     /// <see cref="ComposeUnderUi"/> reads back). Records the captured resource so compose can verify it matches.
     /// </summary>
-    public nint BeginUnderUi(Configuration config)
+    public nint BeginUnderUi(Configuration config, ReadOnlySpan<Vector4> nameplateRectangles = default,
+        float effectOpacity = 1f)
     {
         underUiCaptureValid = false;
+        underUiExclusionValid = false;
+        underUiEffectOpacity = Math.Clamp(effectOpacity, 0f, 1f);
 
         var deviceStruct = Device.Instance();
         if (deviceStruct == null)
@@ -250,6 +297,10 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             var tex2d = (ID3D11Texture2D*)res;
             if (!EnsureScratch(device, tex2d) || !EnsureSharp(device, tex2d) || !EnsureBlur(device, tex2d))
                 return 0;
+
+            // This mask is independent from the UI alpha coverage and can be prepared before the native HUD draws.
+            // Failure only disables nameplate exclusion for this frame; the main blur pipeline remains usable.
+            RenderExclusionMask(device, context, scratchWidth, scratchHeight, nameplateRectangles);
 
             // Keep a sharp copy for the compose stage.
             context->CopyResource((ID3D11Resource*)sharpTexture.Get(), res);
@@ -286,9 +337,14 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         if (!underUiCaptureValid)
             return 0;
 
+        var useExclusionMask = underUiExclusionValid;
+        var effectOpacity = underUiEffectOpacity;
+
         // Consume the capture up-front: whatever happens below (including an early return before the finally is
         // reached), this capture must not be reused next frame — that would ghost a stale frame.
         underUiCaptureValid = false;
+        underUiExclusionValid = false;
+        underUiEffectOpacity = 1f;
 
         var deviceStruct = Device.Instance();
         if (deviceStruct == null)
@@ -327,8 +383,14 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
 
             // Snapshot the composited (UI + blurred) frame; sharp and blurred scenes are already stashed.
             context->CopyResource((ID3D11Resource*)scratchTexture.Get(), res);
+            var fullscreenStateSrv = UpdateFullscreenState(device, context, config);
+            var constants = ComposeConstants(config, scratchWidth, scratchHeight, useExclusionMask,
+                fullscreenStateSrv != null, effectOpacity);
             CaptureAndRender(context, rtv, scratchWidth, scratchHeight, pixelShaderComposeUnderUi.Get(),
-                blendOpaque.Get(), scratchSrv.Get(), sharpSrv.Get(), blurSrv.Get(), ComposeConstants(config, scratchWidth, scratchHeight));
+                blendOpaque.Get(), scratchSrv.Get(), constants,
+                sharpSrv.Get(), blurSrv.Get(),
+                useExclusionMask ? exclusionMaskSrv.Get() : null,
+                fullscreenStateSrv);
 
             return (nint)res;
         }
@@ -341,13 +403,112 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
     }
 
     /// <summary>Drop any stashed pre-UI capture so a later compose can't reuse it (call when not in mask mode).</summary>
-    public void InvalidateUnderUiCapture() => underUiCaptureValid = false;
+    public void InvalidateUnderUiCapture()
+    {
+        underUiCaptureValid = false;
+        underUiExclusionValid = false;
+        underUiEffectOpacity = 1f;
+    }
+
+    private void RenderExclusionMask(ID3D11Device* device, ID3D11DeviceContext* context,
+        uint fullWidth, uint fullHeight, ReadOnlySpan<Vector4> rectangles)
+    {
+        underUiExclusionValid = false;
+        if (rectangles.IsEmpty || fullWidth == 0 || fullHeight == 0)
+            return;
+
+        var maskWidth = Math.Max(1u, (fullWidth + 1) / 2);
+        var maskHeight = Math.Max(1u, (fullHeight + 1) / 2);
+        if (!EnsureRenderTexture(ref exclusionMaskTexture, ref exclusionMaskRtv, ref exclusionMaskSrv,
+                ref exclusionMaskWidth, ref exclusionMaskHeight,
+                device, maskWidth, maskHeight, DXGI_FORMAT.DXGI_FORMAT_R8_UNORM))
+            return;
+
+        if (deviceContext1.Get() == null && !deviceContext1Unavailable)
+        {
+            fixed (Guid* iid = &IID.IID_ID3D11DeviceContext1)
+            {
+                if (context->QueryInterface(iid, (void**)deviceContext1.GetAddressOf()).FAILED)
+                {
+                    deviceContext1Unavailable = true;
+                    Plugin.Log.Warning("ID3D11DeviceContext1 is unavailable; nameplate exclusion is disabled.");
+                }
+            }
+        }
+        if (deviceContext1.Get() == null)
+            return;
+
+        // R8 only consumes the first component. Clear stale rectangles from the previous frame first.
+        var clear = stackalloc float[4] { 0f, 0f, 0f, 0f };
+        context->ClearRenderTargetView(exclusionMaskRtv.Get(), clear);
+
+        var scaled = stackalloc RECT[PreUiFrameState.MaxExcludedRegions];
+        uint count = 0;
+        var scaleX = maskWidth / (float)fullWidth;
+        var scaleY = maskHeight / (float)fullHeight;
+        foreach (var rectangle in rectangles)
+        {
+            var left = Math.Clamp((int)MathF.Floor(rectangle.X * scaleX), 0, (int)maskWidth);
+            var top = Math.Clamp((int)MathF.Floor(rectangle.Y * scaleY), 0, (int)maskHeight);
+            var right = Math.Clamp((int)MathF.Ceiling(rectangle.Z * scaleX), 0, (int)maskWidth);
+            var bottom = Math.Clamp((int)MathF.Ceiling(rectangle.W * scaleY), 0, (int)maskHeight);
+            if (left >= right || top >= bottom)
+                continue;
+
+            scaled[count++] = new RECT(left, top, right, bottom);
+            if (count == PreUiFrameState.MaxExcludedRegions)
+                break;
+        }
+        if (count == 0)
+            return;
+
+        // Draw increasingly strong outer rings before the fully excluded core. Linear sampling of the
+        // half-resolution mask blends the remaining one-pixel steps, producing an approximately 16px feather at
+        // full resolution without another texture or full-screen shader pass.
+        var feathered = stackalloc RECT[PreUiFrameState.MaxExcludedRegions];
+        var featherValue = stackalloc float[4] { 0f, 0f, 0f, 0f };
+        for (var step = ExclusionFeatherStepCount; step >= 1; step--)
+        {
+            var expansion = ExclusionFeatherWidthPixels * step / ExclusionFeatherStepCount;
+            uint featheredCount = 0;
+            foreach (var rectangle in rectangles)
+            {
+                var left = Math.Clamp((int)MathF.Floor((rectangle.X - expansion) * scaleX), 0, (int)maskWidth);
+                var top = Math.Clamp((int)MathF.Floor((rectangle.Y - expansion) * scaleY), 0, (int)maskHeight);
+                var right = Math.Clamp((int)MathF.Ceiling((rectangle.Z + expansion) * scaleX), 0, (int)maskWidth);
+                var bottom = Math.Clamp((int)MathF.Ceiling((rectangle.W + expansion) * scaleY), 0, (int)maskHeight);
+                if (left >= right || top >= bottom)
+                    continue;
+
+                feathered[featheredCount++] = new RECT(left, top, right, bottom);
+                if (featheredCount == PreUiFrameState.MaxExcludedRegions)
+                    break;
+            }
+
+            if (featheredCount > 0)
+            {
+                featherValue[0] = (ExclusionFeatherStepCount - step + 1f) / (ExclusionFeatherStepCount + 1f);
+                deviceContext1.Get()->ClearView(
+                    (ID3D11View*)exclusionMaskRtv.Get(), featherValue, feathered, featheredCount);
+            }
+        }
+
+        var excluded = stackalloc float[4] { 1f, 0f, 0f, 0f };
+        deviceContext1.Get()->ClearView((ID3D11View*)exclusionMaskRtv.Get(), excluded, scaled, count);
+        underUiExclusionValid = true;
+    }
+
+    private const int ExclusionFeatherStepCount = 4;
+    private const float ExclusionFeatherWidthPixels = 16f;
 
     private void CaptureAndRender(ID3D11DeviceContext* context, ID3D11RenderTargetView* rtv,
         uint targetWidth, uint targetHeight, ID3D11PixelShader* ps, ID3D11BlendState* blend,
-        ID3D11ShaderResourceView* srv0, ID3D11ShaderResourceView* srv1, ID3D11ShaderResourceView* srv2,
-        in BlurConstants constants)
+        ID3D11ShaderResourceView* srv0, in BlurConstants constants,
+        ID3D11ShaderResourceView* srv1 = null, ID3D11ShaderResourceView* srv2 = null,
+        ID3D11ShaderResourceView* srv3 = null, ID3D11ShaderResourceView* srv4 = null)
     {
+        var srvCount = srv4 != null ? 5 : srv3 != null ? 4 : srv2 != null ? 3 : srv1 != null ? 2 : 1;
+
         // --- Capture the pipeline state we are about to clobber (each Get* AddRefs; released after restore). ---
         var oldRtvs = stackalloc ID3D11RenderTargetView*[8];
         ID3D11DepthStencilView* oldDsv = null;
@@ -394,12 +555,8 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         ID3D11DomainShader* oldDs = null;
         context->DSGetShader(&oldDs, null, null);
 
-        ID3D11ShaderResourceView* oldSrv0 = null;
-        ID3D11ShaderResourceView* oldSrv1 = null;
-        ID3D11ShaderResourceView* oldSrv2 = null;
-        context->PSGetShaderResources(0, 1, &oldSrv0);
-        context->PSGetShaderResources(1, 1, &oldSrv1);
-        context->PSGetShaderResources(2, 1, &oldSrv2);
+        var oldSrvs = stackalloc ID3D11ShaderResourceView*[5];
+        context->PSGetShaderResources(0, (uint)srvCount, oldSrvs);
 
         ID3D11SamplerState* oldSampler = null;
         context->PSGetSamplers(0, 1, &oldSampler);
@@ -408,7 +565,6 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         context->PSGetConstantBuffers(0, 1, &oldCb);
 
         // Restore scratch buffers must be allocated outside the finally block (stackalloc is disallowed there).
-        var restoreSrvs = stackalloc ID3D11ShaderResourceView*[3];
         var restoreSamplers = stackalloc ID3D11SamplerState*[1];
         var restoreCbs = stackalloc ID3D11Buffer*[1];
 
@@ -444,11 +600,13 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             context->HSSetShader(null, null, 0);
             context->DSSetShader(null, null, 0);
 
-            var srvs = stackalloc ID3D11ShaderResourceView*[3];
+            var srvs = stackalloc ID3D11ShaderResourceView*[5];
             srvs[0] = srv0;
             srvs[1] = srv1;
             srvs[2] = srv2;
-            context->PSSetShaderResources(0, 3, srvs);
+            srvs[3] = srv3;
+            srvs[4] = srv4;
+            context->PSSetShaderResources(0, (uint)srvCount, srvs);
 
             var samplers = stackalloc ID3D11SamplerState*[1];
             samplers[0] = sampler.Get();
@@ -476,10 +634,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             context->HSSetShader(oldHs, null, 0);
             context->DSSetShader(oldDs, null, 0);
 
-            restoreSrvs[0] = oldSrv0;
-            restoreSrvs[1] = oldSrv1;
-            restoreSrvs[2] = oldSrv2;
-            context->PSSetShaderResources(0, 3, restoreSrvs);
+            context->PSSetShaderResources(0, (uint)srvCount, oldSrvs);
 
             restoreSamplers[0] = oldSampler;
             context->PSSetSamplers(0, 1, restoreSamplers);
@@ -500,9 +655,9 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             if (oldGs != null) oldGs->Release();
             if (oldHs != null) oldHs->Release();
             if (oldDs != null) oldDs->Release();
-            if (oldSrv0 != null) oldSrv0->Release();
-            if (oldSrv1 != null) oldSrv1->Release();
-            if (oldSrv2 != null) oldSrv2->Release();
+            for (var i = 0; i < srvCount; i++)
+                if (oldSrvs[i] != null)
+                    oldSrvs[i]->Release();
             if (oldSampler != null) oldSampler->Release();
             if (oldCb != null) oldCb->Release();
         }
@@ -514,8 +669,56 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             context->UpdateSubresource((ID3D11Resource*)constantBuffer.Get(), 0, null, p, 0, 0);
     }
 
+    private ID3D11ShaderResourceView* UpdateFullscreenState(
+        ID3D11Device* device, ID3D11DeviceContext* context, Configuration config)
+    {
+        if (!config.SkipFullscreenUi)
+        {
+            fullscreenStateWasEnabled = false;
+            fullscreenStateTimestamp = 0;
+            return null;
+        }
+
+        var created = fullscreenStateTextures[0].Get() == null || fullscreenStateTextures[1].Get() == null;
+        for (var i = 0; i < 2; i++)
+        {
+            if (!EnsureRenderTexture(
+                    ref fullscreenStateTextures[i], ref fullscreenStateRtvs[i], ref fullscreenStateSrvs[i],
+                    ref fullscreenStateWidths[i], ref fullscreenStateHeights[i],
+                    device, 1, 1, DXGI_FORMAT.DXGI_FORMAT_R32_FLOAT))
+                return null;
+        }
+
+        if (created || !fullscreenStateWasEnabled)
+        {
+            var fullyRecovered = stackalloc float[4] { 1f, 0f, 0f, 0f };
+            context->ClearRenderTargetView(fullscreenStateRtvs[0].Get(), fullyRecovered);
+            context->ClearRenderTargetView(fullscreenStateRtvs[1].Get(), fullyRecovered);
+            fullscreenStateReadIndex = 0;
+            fullscreenStateTimestamp = Stopwatch.GetTimestamp();
+            fullscreenStateWasEnabled = true;
+        }
+
+        var now = Stopwatch.GetTimestamp();
+        var elapsed = fullscreenStateTimestamp == 0
+            ? 0.0
+            : (now - fullscreenStateTimestamp) / (double)Stopwatch.Frequency;
+        fullscreenStateTimestamp = now;
+
+        var duration = Math.Clamp(config.UiRecoveryFadeDuration, 0f, 2f);
+        var recoveryStep = duration <= 0f ? 1f : Math.Clamp((float)(elapsed / duration), 0f, 1f);
+        var writeIndex = 1 - fullscreenStateReadIndex;
+        var constants = PassConstants(scratchWidth, scratchHeight, recoveryStep);
+        CaptureAndRender(context, fullscreenStateRtvs[writeIndex].Get(), 1, 1,
+            pixelShaderFullscreenState.Get(), blendOpaque.Get(),
+            scratchSrv.Get(), constants, fullscreenStateSrvs[fullscreenStateReadIndex].Get());
+        fullscreenStateReadIndex = writeIndex;
+        return fullscreenStateSrvs[fullscreenStateReadIndex].Get();
+    }
+
     /// <summary>Constants for the final compose pass (mask thresholds, full-screen skip, glass material).</summary>
-    private BlurConstants ComposeConstants(Configuration config, uint width, uint height)
+    private BlurConstants ComposeConstants(Configuration config, uint width, uint height,
+        bool useExclusionMask, bool useFullscreenState, float effectOpacity)
     {
         var start = Math.Clamp(Math.Min(config.MaskAlphaStart, config.MaskAlphaEnd), 0f, 1f);
         var end = Math.Clamp(Math.Max(config.MaskAlphaStart, config.MaskAlphaEnd), 0f, 1f);
@@ -526,7 +729,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             OutputAlpha = 1f,
             MaskStart = start,
             MaskEnd = end,
-            SkipFullscreen = config.SkipFullscreenUi ? 1f : 0f,
+            SkipFullscreen = useFullscreenState ? 1f : 0f,
             GrainAmount = config.GrainEnabled ? Math.Clamp(config.GrainAmount, 0f, 1f) : 0f,
             GrainScale = Math.Max(config.GrainScale, 1f),
             GrainSoft = config.GrainSoft ? 1f : 0f,
@@ -540,6 +743,8 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             Brightness = config.AdjustEnabled ? config.Brightness : 1f,
             Saturation = config.AdjustEnabled ? config.Saturation : 1f,
             Contrast = config.AdjustEnabled ? config.Contrast : 1f,
+            UseExclusionMask = useExclusionMask ? 1f : 0f,
+            EffectOpacity = Math.Clamp(effectOpacity, 0f, 1f),
         };
     }
 
@@ -550,6 +755,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             TexelX = srcWidth > 0 ? 1f / srcWidth : 0f,
             TexelY = srcHeight > 0 ? 1f / srcHeight : 0f,
             OutputAlpha = outputAlpha,
+            EffectOpacity = 1f,
         };
 
     private bool EnsureScratch(ID3D11Device* device, ID3D11Texture2D* target)
@@ -680,7 +886,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         if (!config.BlurEnabled)
         {
             CaptureAndRender(context, boundRtv, fullW, fullH, pixelShaderCopy.Get(), blendWriteAll.Get(),
-                sharpSrv.Get(), null, null, PassConstants(sharpWidth, sharpHeight, 0f));
+                sharpSrv.Get(), PassConstants(sharpWidth, sharpHeight, 0f));
             return true;
         }
 
@@ -706,7 +912,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             if (radius < 0.5f)
             {
                 CaptureAndRender(context, boundRtv, fullW, fullH, pixelShaderCopy.Get(), blendWriteAll.Get(),
-                    sharpSrv.Get(), null, null, PassConstants(sharpWidth, sharpHeight, 0f));
+                    sharpSrv.Get(), PassConstants(sharpWidth, sharpHeight, 0f));
                 return true;
             }
             var octave = radius / 2f;
@@ -728,13 +934,13 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             ch.DirX = (fullW > 0 ? 1f / fullW : 0f) * gaussScale;
             ch.DirY = 0f;
             CaptureAndRender(context, gaussTempRtv.Get(), fullW, fullH, pixelShaderGaussian.Get(),
-                blendOpaque.Get(), sharpSrv.Get(), null, null, ch);
+                blendOpaque.Get(), sharpSrv.Get(), ch);
 
             var cv = PassConstants(fullW, fullH, 0f);
             cv.DirX = 0f;
             cv.DirY = (fullH > 0 ? 1f / fullH : 0f) * gaussScale;
             CaptureAndRender(context, boundRtv, fullW, fullH, pixelShaderGaussian.Get(),
-                blendWriteAll.Get(), gaussTempSrv.Get(), null, null, cv);
+                blendWriteAll.Get(), gaussTempSrv.Get(), cv);
             return true;
         }
 
@@ -753,7 +959,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             var c = PassConstants(srcW, srcH, 1f);
             c.Strength = strength;
             CaptureAndRender(context, pyrRtv[i].Get(), pyrW[i], pyrH[i], pixelShaderDownsample.Get(),
-                blendOpaque.Get(), srcSrv, null, null, c);
+                blendOpaque.Get(), srcSrv, c);
             srcSrv = pyrSrv[i].Get();
             srcW = pyrW[i];
             srcH = pyrH[i];
@@ -767,13 +973,13 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             ch.DirX = (pyrW[bottom] > 0 ? 1f / pyrW[bottom] : 0f) * scale;
             ch.DirY = 0f;
             CaptureAndRender(context, gaussTempRtv.Get(), gaussTempW, gaussTempH, pixelShaderGaussian.Get(),
-                blendOpaque.Get(), pyrSrv[bottom].Get(), null, null, ch);
+                blendOpaque.Get(), pyrSrv[bottom].Get(), ch);
             // Vertical: gaussTemp -> pyr[bottom].
             var cv = PassConstants(gaussTempW, gaussTempH, 1f);
             cv.DirX = 0f;
             cv.DirY = (gaussTempH > 0 ? 1f / gaussTempH : 0f) * scale;
             CaptureAndRender(context, pyrRtv[bottom].Get(), pyrW[bottom], pyrH[bottom], pixelShaderGaussian.Get(),
-                blendOpaque.Get(), gaussTempSrv.Get(), null, null, cv);
+                blendOpaque.Get(), gaussTempSrv.Get(), cv);
         }
 
         // Upsample chain: pyr[bottom] -> ... -> pyr[0], then pyr[0] -> bound target (alpha forced to 0).
@@ -782,13 +988,13 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             var c = PassConstants(pyrW[i], pyrH[i], 1f);
             c.Strength = strength;
             CaptureAndRender(context, pyrRtv[i - 1].Get(), pyrW[i - 1], pyrH[i - 1], pixelShaderUpsample.Get(),
-                blendOpaque.Get(), pyrSrv[i].Get(), null, null, c);
+                blendOpaque.Get(), pyrSrv[i].Get(), c);
         }
 
         var cf = PassConstants(pyrW[0], pyrH[0], 0f);
         cf.Strength = strength;
         CaptureAndRender(context, boundRtv, fullW, fullH, pixelShaderUpsample.Get(), blendWriteAll.Get(),
-            pyrSrv[0].Get(), null, null, cf);
+            pyrSrv[0].Get(), cf);
         return true;
     }
 
@@ -875,6 +1081,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
             using (var psZeroAlpha = CompileShader(ShaderSource, "PsCopyZeroAlpha\0"u8, "ps_5_0\0"u8))
             using (var psAlphaViz = CompileShader(ShaderSource, "PsAlphaViz\0"u8, "ps_5_0\0"u8))
             using (var psCompose = CompileShader(ShaderSource, "PsComposeUnderUi\0"u8, "ps_5_0\0"u8))
+            using (var psFullscreenState = CompileShader(ShaderSource, "PsFullscreenState\0"u8, "ps_5_0\0"u8))
             using (var psDown = CompileShader(ShaderSource, "PsDownsample\0"u8, "ps_5_0\0"u8))
             using (var psUp = CompileShader(ShaderSource, "PsUpsample\0"u8, "ps_5_0\0"u8))
             using (var psGauss = CompileShader(ShaderSource, "PsGaussian\0"u8, "ps_5_0\0"u8))
@@ -891,6 +1098,9 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
 
                 fixed (ID3D11PixelShader** pp = &pixelShaderComposeUnderUi.GetPinnableReference())
                     Check(device->CreatePixelShader(psCompose.Get()->GetBufferPointer(), psCompose.Get()->GetBufferSize(), null, pp), "CreatePixelShader(ComposeUnderUi)");
+
+                fixed (ID3D11PixelShader** pp = &pixelShaderFullscreenState.GetPinnableReference())
+                    Check(device->CreatePixelShader(psFullscreenState.Get()->GetBufferPointer(), psFullscreenState.Get()->GetBufferSize(), null, pp), "CreatePixelShader(FullscreenState)");
 
                 fixed (ID3D11PixelShader** pp = &pixelShaderDownsample.GetPinnableReference())
                     Check(device->CreatePixelShader(psDown.Get()->GetBufferPointer(), psDown.Get()->GetBufferSize(), null, pp), "CreatePixelShader(Downsample)");
@@ -1050,6 +1260,16 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         gaussTempSrv.Dispose();
         gaussTempRtv.Dispose();
         gaussTempTex.Dispose();
+        for (var i = 0; i < 2; i++)
+        {
+            fullscreenStateSrvs[i].Dispose();
+            fullscreenStateRtvs[i].Dispose();
+            fullscreenStateTextures[i].Dispose();
+        }
+        deviceContext1.Dispose();
+        exclusionMaskSrv.Dispose();
+        exclusionMaskRtv.Dispose();
+        exclusionMaskTexture.Dispose();
         blurSrv.Dispose();
         blurTexture.Dispose();
         sharpSrv.Dispose();
@@ -1066,6 +1286,7 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
         pixelShaderGaussian.Dispose();
         pixelShaderUpsample.Dispose();
         pixelShaderDownsample.Dispose();
+        pixelShaderFullscreenState.Dispose();
         pixelShaderComposeUnderUi.Dispose();
         pixelShaderAlphaViz.Dispose();
         pixelShaderCopyZeroAlpha.Dispose();
@@ -1076,6 +1297,8 @@ internal sealed unsafe class BackdropBlurRenderer : IDisposable
 Texture2D SceneTexture : register(t0);
 Texture2D SharpTexture : register(t1);
 Texture2D BlurTexture  : register(t2);
+Texture2D ExclusionMask : register(t3);
+Texture2D FullscreenState : register(t4);
 SamplerState SceneSampler : register(s0);
 
 cbuffer BlurConstants : register(b0)
@@ -1102,7 +1325,9 @@ cbuffer BlurConstants : register(b0)
     float  Brightness;
     float  Saturation;
     float  Contrast;
-    float  Pad0;
+    float  UseExclusionMask;
+    float  EffectOpacity;
+    float3 ConstantsPadding;
 };
 
 struct VsOut
@@ -1126,12 +1351,35 @@ float4 PsCopyZeroAlpha(VsOut input) : SV_Target
     return float4(SceneTexture.Sample(SceneSampler, input.uv).rgb, 0.0);
 }
 
-// Diagnostic: show the sampled alpha channel as greyscale, to reveal whether the native UI writes coverage
-// into the back-buffer alpha channel.
+// Diagnostic: show native UI alpha as greyscale and overlay the target exclusion mask in red. The red intensity
+// includes the feather strength, making both the captured bounds and their soft transition directly visible.
 float4 PsAlphaViz(VsOut input) : SV_Target
 {
     float a = SceneTexture.Sample(SceneSampler, input.uv).a;
-    return float4(a, a, a, 1.0);
+    float exclusion = UseExclusionMask > 0.5 ? ExclusionMask.Sample(SceneSampler, input.uv).r : 0.0;
+    float3 coverage = float3(a, a, a);
+    return float4(lerp(coverage, float3(1.0, 0.05, 0.05), exclusion), 1.0);
+}
+
+// Update one pixel of persistent full-screen-cover recovery state. The expensive 12x12 coverage test runs only
+// here (once per frame), rather than redundantly in every output pixel of the final compose pass.
+float4 PsFullscreenState(VsOut input) : SV_Target
+{
+    const int GRID = 12;
+    float minCoverage = 1.0;
+    [loop] for (int gy = 0; gy < GRID; gy++)
+    {
+        [loop] for (int gx = 0; gx < GRID; gx++)
+        {
+            float2 c = (float2(gx, gy) + 0.5) / GRID;
+            minCoverage = min(minCoverage, saturate(SceneTexture.SampleLevel(SceneSampler, c, 0).a));
+        }
+    }
+
+    float fullscreen = smoothstep(0.004, 0.02, minCoverage);
+    float previous = saturate(SharpTexture.SampleLevel(SceneSampler, float2(0.5, 0.5), 0).r);
+    float recovered = min(previous + OutputAlpha, 1.0);
+    return float4(lerp(recovered, 0.0, fullscreen), 0.0, 0.0, 1.0);
 }
 
 // Cheap hash -> [0,1). Stable per screen pixel, so procedural grain / bump do not shimmer over time.
@@ -1188,25 +1436,19 @@ float4 PsComposeUnderUi(VsOut input) : SV_Target
         rawCoverage *= uiChanged;
         remapped *= uiChanged;
 
-        // Full-screen-cover skip: if the UI covers the WHOLE screen (a map / full menu / loading overlay), disable
-        // the background blur (show it sharp). Detection follows ReShade KeepUIX: sample a fixed grid and treat it
-        // as fullscreen only if EVERY sample point has some UI coverage (i.e. there is no fully-transparent hole).
+        // Full-screen-cover skip and recovery are evaluated once per frame into a 1x1 ping-ponged state texture.
         if (SkipFullscreen > 0.5)
         {
-            const int GRID = 12;
-            float minCoverage = 1.0;
-            [loop] for (int gy = 0; gy < GRID; gy++)
-            {
-                [loop] for (int gx = 0; gx < GRID; gx++)
-                {
-                    float2 c = (float2(gx, gy) + 0.5) / GRID;
-                    minCoverage = min(minCoverage, saturate(SceneTexture.Sample(SceneSampler, c).a));
-                }
-            }
-            // A tiny soft band around the 'no transparent hole' threshold to avoid a 1-frame hard pop.
-            float fullscreen = smoothstep(0.004, 0.02, minCoverage);
-            remapped *= (1.0 - fullscreen);
+            float recovery = saturate(FullscreenState.SampleLevel(SceneSampler, float2(0.5, 0.5), 0).r);
+            remapped *= recovery * recovery * (3.0 - 2.0 * recovery);
         }
+
+        remapped *= EffectOpacity;
+
+        // The target nameplate, HP bar, and cursor share the native UI alpha channel with normal windows. A separate
+        // half-resolution mask scopes their screen-space bounds; actual exclusion still follows per-pixel UI coverage.
+        if (UseExclusionMask > 0.5)
+            remapped *= (1.0 - ExclusionMask.Sample(SceneSampler, input.uv).r);
     }
 
     float3 result = composited.rgb + (sharp - blurred) * ((1.0 - remapped) * (1.0 - rawCoverage));

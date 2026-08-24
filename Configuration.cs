@@ -67,6 +67,20 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool SkipFullscreenUi { get; set; } = false;
 
+    /// <summary>
+    /// Disable the effect while the game's native full-screen fade is active. Unlike
+    /// <see cref="SkipFullscreenUi"/>, this uses the UI manager's explicit fade state rather than a pixel heuristic.
+    /// </summary>
+    public bool SkipUiFading { get; set; } = true;
+
+    /// <summary>Seconds used to restore acrylic after a native UI fade or full-screen cover ends.</summary>
+    public float UiRecoveryFadeDuration { get; set; } = 0.3f;
+
+    /// <summary>
+    /// Keep the world sharp behind the current target's native nameplate, HP bar, and target cursor.
+    /// </summary>
+    public bool ExcludeTargetNameplate { get; set; } = true;
+
     /// <summary>Enable the frosted-glass blur behind the UI. Off keeps only the material effects over the sharp scene.</summary>
     public bool BlurEnabled { get; set; } = true;
 
@@ -74,7 +88,8 @@ public class Configuration : IPluginConfiguration
     /// Diagnostic for the "blur only under the UI" work. When on, the pre-UI marker resets the back-buffer alpha
     /// to 0 and the post-UI marker overwrites the frame with that alpha channel as greyscale. If the native UI
     /// shows up (white where UI is), FFXIV writes per-pixel UI coverage into the back-buffer alpha, which we can
-    /// then use to mask the blur. If the screen stays black, that channel is unusable and we need another source.
+    /// then use to mask the blur. The target exclusion mask is overlaid in red, including its feathered edge. If
+    /// the screen stays black, the native alpha channel is unusable and we need another source.
     /// </summary>
     public bool DebugShowUiMask { get; set; } = false;
 

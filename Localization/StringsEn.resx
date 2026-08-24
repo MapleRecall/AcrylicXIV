@@ -89,10 +89,37 @@
     <value>Debug</value>
   </data>
   <data name="SkipFullscreen" xml:space="preserve">
-    <value>Disable blur under full-screen UI</value>
+    <value>Disable effect under full-screen UI</value>
   </data>
   <data name="SkipFullscreenHelp" xml:space="preserve">
-    <value>Keep full-screen covers (maps, menus) sharp, avoiding a flash when they open or close.</value>
+    <value>Keep full-screen covers (system configuration and full-screen dimming overlays) sharp, avoiding a flash when they open or close.</value>
+  </data>
+  <data name="SkipUiFading" xml:space="preserve">
+    <value>Disable effect during UI fades</value>
+  </data>
+  <data name="SkipUiFadingHelp" xml:space="preserve">
+    <value>Avoid potential dizziness caused by full-screen blur.</value>
+  </data>
+  <data name="UiRecoveryFadeDuration" xml:space="preserve">
+    <value>Effect recovery fade</value>
+  </data>
+  <data name="UiRecoveryFadeDurationHelp" xml:space="preserve">
+    <value>How long the effect takes to fade back in after a native UI fade or full-screen cover ends. Set to 0 for an instant transition.</value>
+  </data>
+  <data name="ExcludeTargetNameplate" xml:space="preserve">
+    <value>Exclude the target nameplate, HP bar, and cursor</value>
+  </data>
+  <data name="ExcludeTargetNameplateHelp" xml:space="preserve">
+    <value>The nameplate may look a little odd when it overlaps other blurred regions.</value>
+  </data>
+  <data name="GroupNameplateExclusion" xml:space="preserve">
+    <value>Excluded areas</value>
+  </data>
+  <data name="GroupEffectSuspension" xml:space="preserve">
+    <value>Conditional disabling</value>
+  </data>
+  <data name="GroupUiCoverage" xml:space="preserve">
+    <value>Coverage</value>
   </data>
   <data name="BlurStartAlpha" xml:space="preserve">
     <value>Blur start alpha</value>
@@ -207,6 +234,6 @@ Gaussian: steadier, especially on text.</value>
     <value>Show UI coverage mask</value>
   </data>
   <data name="DebugMaskHelp" xml:space="preserve">
-    <value>Shows where the game thinks the UI is (white = UI).</value>
+    <value>Shows native UI coverage in white and the target exclusion mask in red, including its soft edge.</value>
   </data>
 </root>

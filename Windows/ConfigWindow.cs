@@ -74,7 +74,25 @@ public sealed class ConfigWindow : Window, IDisposable
             Loc.Apply(config.Language);
         }
 
-        ImGui.Separator();
+        DrawGroupHeader(Loc.Get("GroupNameplateExclusion"));
+
+        var excludeTargetNameplate = config.ExcludeTargetNameplate;
+        if (ImGui.Checkbox(Loc.Get("ExcludeTargetNameplate"), ref excludeTargetNameplate))
+        {
+            config.ExcludeTargetNameplate = excludeTargetNameplate;
+            config.Save();
+        }
+        ImGuiComponents.HelpMarker(Loc.Get("ExcludeTargetNameplateHelp"));
+
+        DrawGroupHeader(Loc.Get("GroupEffectSuspension"));
+
+        var skipFade = config.SkipUiFading;
+        if (ImGui.Checkbox(Loc.Get("SkipUiFading"), ref skipFade))
+        {
+            config.SkipUiFading = skipFade;
+            config.Save();
+        }
+        ImGuiComponents.HelpMarker(Loc.Get("SkipUiFadingHelp"));
 
         var skipFs = config.SkipFullscreenUi;
         if (ImGui.Checkbox(Loc.Get("SkipFullscreen"), ref skipFs))
@@ -83,6 +101,19 @@ public sealed class ConfigWindow : Window, IDisposable
             config.Save();
         }
         ImGuiComponents.HelpMarker(Loc.Get("SkipFullscreenHelp"));
+
+        if (skipFade || skipFs)
+        {
+            var recoveryDuration = config.UiRecoveryFadeDuration;
+            if (ImGui.SliderFloat(Loc.Get("UiRecoveryFadeDuration"), ref recoveryDuration, 0f, 1f, "%.2f s"))
+            {
+                config.UiRecoveryFadeDuration = recoveryDuration;
+                config.Save();
+            }
+            ImGuiComponents.HelpMarker(Loc.Get("UiRecoveryFadeDurationHelp"));
+        }
+
+        DrawGroupHeader(Loc.Get("GroupUiCoverage"));
 
         var start = config.MaskAlphaStart;
         if (ImGui.SliderFloat(Loc.Get("BlurStartAlpha"), ref start, 0.0f, 1.0f, "%.2f"))
@@ -108,8 +139,17 @@ public sealed class ConfigWindow : Window, IDisposable
 
         ImGui.Spacing();
         ImGui.Separator();
+        ImGui.Spacing();
         using var wrap = ImRaii.TextWrapPos(0.0f);
         ImGui.TextUnformatted(Loc.Get("InterWindowNote"));
+    }
+
+    private static void DrawGroupHeader(string title)
+    {
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+        ImGui.TextUnformatted(title);
     }
 
     // The blur algorithm and its tuning, plus the frosted-glass material layered on top.

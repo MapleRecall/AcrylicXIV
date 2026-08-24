@@ -89,10 +89,37 @@
     <value>调试</value>
   </data>
   <data name="SkipFullscreen" xml:space="preserve">
-    <value>全屏 UI 下禁用虚化</value>
+    <value>全屏 UI 下禁用效果</value>
   </data>
   <data name="SkipFullscreenHelp" xml:space="preserve">
-    <value>全屏遮罩（地图、菜单等）保持清晰，避免开关时闪一下。</value>
+    <value>让全屏遮罩（界面设置、全屏变暗遮罩等）保持清晰，避免开关时闪一下。</value>
+  </data>
+  <data name="SkipUiFading" xml:space="preserve">
+    <value>UI 淡入淡出时禁用效果</value>
+  </data>
+  <data name="SkipUiFadingHelp" xml:space="preserve">
+    <value>避免全屏模糊可能导致的晕眩感。</value>
+  </data>
+  <data name="UiRecoveryFadeDuration" xml:space="preserve">
+    <value>效果恢复渐入</value>
+  </data>
+  <data name="UiRecoveryFadeDurationHelp" xml:space="preserve">
+    <value>原生 UI 淡入淡出或全屏遮罩结束后，效果恢复所需的时间。设为 0 可立即恢复。</value>
+  </data>
+  <data name="ExcludeTargetNameplate" xml:space="preserve">
+    <value>排除当前目标的姓名板、血条和箭头</value>
+  </data>
+  <data name="ExcludeTargetNameplateHelp" xml:space="preserve">
+    <value>名牌覆盖在其他模糊区域上时可能会看起来有些奇怪。</value>
+  </data>
+  <data name="GroupNameplateExclusion" xml:space="preserve">
+    <value>排除区域</value>
+  </data>
+  <data name="GroupEffectSuspension" xml:space="preserve">
+    <value>条件禁用</value>
+  </data>
+  <data name="GroupUiCoverage" xml:space="preserve">
+    <value>覆盖范围</value>
   </data>
   <data name="BlurStartAlpha" xml:space="preserve">
     <value>虚化起始 alpha</value>
@@ -207,6 +234,6 @@
     <value>显示 UI 覆盖遮罩</value>
   </data>
   <data name="DebugMaskHelp" xml:space="preserve">
-    <value>显示游戏认为 UI 所在的位置（白 = UI）。</value>
+    <value>以白色显示原生 UI 覆盖，以红色显示目标排除区域及其软边。</value>
   </data>
 </root>

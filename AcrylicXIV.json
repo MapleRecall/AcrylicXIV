@@ -3,6 +3,7 @@
   "Name": "AcrylicXIV",
   "Punchline": "Give your UI that premium, acrylic look upgrade. Because Eorzea looks better with some blur.",
   "Description": "Blur the background behind native UI like acrylic or frosted glass, making it more elegant and readable. Customize your effects with acrylic styling, distortion, tints, and full control over brightness, saturation, and contrast.",
+  "RepoUrl": "https://github.com/MapleRecall/AcrylicXIV",
   "ApplicableVersion": "any",
   "Tags": [
     "blur",

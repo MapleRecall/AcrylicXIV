@@ -18,7 +18,9 @@ AcrylicXIV injects a blur pass into the game's render pipeline right before the 
   - **Distortion** — wavy, glass-like warp.
   - **Adjust** — brightness / saturation / contrast.
 - **Transparency-aware** — start / full alpha thresholds control how UI opacity fades the blur in.
-- **Skip full-screen covers** — keep maps, menus and loading screens sharp, avoiding a blur⇄sharp flash.
+- **Skip full-screen covers** — keep maps, menus and loading screens sharp, then fade acrylic smoothly back in.
+- **Skip UI fades** — use the game's native fade state to keep zone transitions sharp, with an adjustable recovery fade.
+- **Exclude the target nameplate** — keep the world behind the current target's native nameplate, HP bar, and arrow cursor sharp.
 
 ## Usage
 

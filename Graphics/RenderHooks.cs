@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 using Dalamud.Hooking;
@@ -22,13 +23,17 @@ internal sealed unsafe class RenderHooks : IDisposable
     private readonly BackdropBlurRenderer renderer;
     private readonly Func<Configuration> getConfig;
     private readonly RenderPipelineInjector injector;
+    private readonly IGameGui gameGui;
 
     // Synchronizes render callbacks with D3D resource disposal.
     private readonly object renderLock = new();
     private bool disposed;
 
     private bool detourFailed;
-    private long errorThrottle;
+    private long captureErrorThrottle;
+    private long renderErrorThrottle;
+    private bool uiFadeWasActive;
+    private long uiFadeRecoveryStarted;
 
     public bool Available => setRenderTargetHook != null;
 
@@ -36,11 +41,12 @@ internal sealed unsafe class RenderHooks : IDisposable
         setRenderTargetHook != null && pushbackUiHook != null && draw2DHook != null && injector.Available;
 
     public RenderHooks(BackdropBlurRenderer renderer, Func<Configuration> getConfig,
-        RenderPipelineInjector injector, IGameInteropProvider gameInterop)
+        RenderPipelineInjector injector, IGameInteropProvider gameInterop, IGameGui gameGui)
     {
         this.renderer = renderer;
         this.getConfig = getConfig;
         this.injector = injector;
+        this.gameGui = gameGui;
 
         setRenderTargetHook = TryCreateHook<ImmediateContext.Delegates.DoSetTargetCommand>(gameInterop,
             ImmediateContext.Addresses.DoSetTargetCommand.Value, SetRenderTargetDetour, "render-thread");
@@ -80,7 +86,16 @@ internal sealed unsafe class RenderHooks : IDisposable
             {
                 var config = getConfig();
                 if (config.Enabled)
-                    injector.QueueMarker(RenderPipelineInjector.BlurMarker);
+                {
+                    var unitManager = RaptureAtkUnitManager.Instance();
+                    var isUiFading = unitManager != null && unitManager->IsUiFading;
+                    var skipFade = config.SkipUiFading && isUiFading;
+                    var effectOpacity = UpdateUiFadeRecovery(config, isUiFading);
+                    var frameState = !skipFade && config.ExcludeTargetNameplate && !config.FullscreenTest
+                        ? CaptureNameplates(effectOpacity)
+                        : PreUiFrameState.Create(skipFade, effectOpacity);
+                    injector.QueuePreUiMarker(frameState);
+                }
             }
             catch (Exception ex)
             {
@@ -120,9 +135,14 @@ internal sealed unsafe class RenderHooks : IDisposable
             var n = command->RenderTargetCount;
             if (n == RenderPipelineInjector.BlurMarker)
             {
+                var frameState = injector.TakePreUiFrameState();
                 try
                 {
-                    HandlePreUiMarker();
+                    Span<System.Numerics.Vector4> rectangles =
+                        stackalloc System.Numerics.Vector4[PreUiFrameState.MaxExcludedRegions];
+                    var rectangleCount = frameState.CopyRectangles(rectangles);
+                    HandlePreUiMarker(
+                        frameState.SkipEffect, rectangles[..rectangleCount], frameState.EffectOpacity);
                 }
                 finally
                 {
@@ -147,8 +167,70 @@ internal sealed unsafe class RenderHooks : IDisposable
         setRenderTargetHook!.Original(immediateContext, command);
     }
 
-    private void HandlePreUiMarker()
+    private float UpdateUiFadeRecovery(Configuration config, bool isUiFading)
     {
+        if (!config.SkipUiFading)
+        {
+            uiFadeWasActive = false;
+            uiFadeRecoveryStarted = 0;
+            return 1f;
+        }
+
+        if (isUiFading)
+        {
+            uiFadeWasActive = true;
+            uiFadeRecoveryStarted = 0;
+            return 0f;
+        }
+
+        if (uiFadeWasActive)
+        {
+            uiFadeWasActive = false;
+            uiFadeRecoveryStarted = Stopwatch.GetTimestamp();
+        }
+
+        var duration = Math.Clamp(config.UiRecoveryFadeDuration, 0f, 2f);
+        if (uiFadeRecoveryStarted == 0 || duration <= 0f)
+            return 1f;
+
+        var elapsed = Stopwatch.GetElapsedTime(uiFadeRecoveryStarted).TotalSeconds;
+        if (elapsed >= duration)
+        {
+            uiFadeRecoveryStarted = 0;
+            return 1f;
+        }
+
+        var t = Math.Clamp((float)(elapsed / duration), 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
+    private PreUiFrameState CaptureNameplates(float effectOpacity)
+    {
+        try
+        {
+            return PreUiFrameState.Capture(gameGui, effectOpacity);
+        }
+        catch (Exception ex)
+        {
+            if (captureErrorThrottle++ % 600 == 0)
+                Plugin.Log.Error(ex, "Capturing nameplate bounds failed (throttled); rendering without exclusions.");
+            return PreUiFrameState.Create(skipEffect: false, effectOpacity: effectOpacity);
+        }
+    }
+
+    private void HandlePreUiMarker(bool skipEffect, ReadOnlySpan<System.Numerics.Vector4> nameplateRectangles,
+        float effectOpacity)
+    {
+        if (skipEffect)
+        {
+            lock (renderLock)
+            {
+                if (!disposed)
+                    renderer.InvalidateUnderUiCapture();
+            }
+            return;
+        }
+
         if (detourFailed)
             return;
 
@@ -172,22 +254,22 @@ internal sealed unsafe class RenderHooks : IDisposable
                     }
                     else
                     {
-                        renderer.BeginUnderUi(config);
+                        renderer.BeginUnderUi(config, effectOpacity: effectOpacity);
                     }
                 }
                 else if (config.DebugShowUiMask)
                 {
                     renderer.InvalidateUnderUiCapture();
-                    renderer.ClearBoundAlpha();
+                    renderer.ClearBoundAlpha(nameplateRectangles);
                 }
                 else
                 {
-                    renderer.BeginUnderUi(config);
+                    renderer.BeginUnderUi(config, nameplateRectangles, effectOpacity);
                 }
             }
             catch (Exception ex)
             {
-                if (errorThrottle++ % 600 == 0)
+                if (renderErrorThrottle++ % 600 == 0)
                     Plugin.Log.Error(ex, "Backdrop blur draw failed (throttled).");
             }
         }
@@ -218,7 +300,7 @@ internal sealed unsafe class RenderHooks : IDisposable
             }
             catch (Exception ex)
             {
-                if (errorThrottle++ % 600 == 0)
+                if (renderErrorThrottle++ % 600 == 0)
                     Plugin.Log.Error(ex, "Backdrop compose failed (throttled).");
             }
         }
